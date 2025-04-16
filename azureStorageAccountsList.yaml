@@ -1,0 +1,64 @@
+name: Email Lifecycle Rules Report
+
+on:
+  workflow_dispatch:
+
+jobs:
+  email_lifecycle_report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install JQ
+        run: sudo apt-get update && sudo apt-get install jq -y
+
+      - name: Generate lifecycle_rules.csv
+        run: |
+          echo "StorageAccount,RuleName,PrefixMatch,Action,DaysAfterModification" > lifecycle_rules.csv
+
+          az storage account list --query "[].{name:name, resourceGroup:resourceGroup}" -o json > storage_accounts.json
+
+          for row in $(jq -c '.[]' storage_accounts.json); do
+              name=$(echo $row | jq -r '.name')
+              rg=$(echo $row | jq -r '.resourceGroup')
+
+              rules=$(az storage account management-policy show \
+                  --account-name "$name" \
+                  --resource-group "$rg" \
+                  --query 'policy.rules' -o json 2>/dev/null)
+
+              if [[ ! -z "$rules" && "$rules" != "null" ]]; then
+                  echo "$rules" | jq -c '.[]' | while read -r rule; do
+                      ruleName=$(echo $rule | jq -r '.name')
+                      prefix=$(echo $rule | jq -r '.definition.filters.prefixMatch[0] // "ALL"')
+                      actions=$(echo $rule | jq -c '.definition.actions')
+
+                      for actionType in delete baseBlob delete.snapshots; do
+                          actionDays=$(echo "$actions" | jq -r --arg a "$actionType" 'paths(scalars) as $p | if ($p | join(".")) | startswith($a) then getpath($p) else empty end')
+                          if [[ ! -z "$actionDays" && "$actionDays" != "null" ]]; then
+                              echo "$name,$ruleName,$prefix,$actionType,$actionDays" >> lifecycle_rules.csv
+                          fi
+                      done
+                  done
+              fi
+          done
+
+      - name: Send lifecycle CSV via Email
+        uses: mattnotmitt/send-email@v1
+        with:
+          server_address: smtp.yourserver.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: Azure Storage Lifecycle Rules Report
+          body: Attached is the CSV report of lifecycle rules across all storage accounts.
+          to: you@example.com
+          from: Azure Automation <you@example.com>
+          attachments: lifecycle_rules.csv
