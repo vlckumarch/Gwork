@@ -1,0 +1,62 @@
+Yes, you can absolutely do it without using Axios — React supports native JavaScript fetch() for API calls. Axios is just a popular library that simplifies HTTP requests, but it's not required.
+
+Here’s the same logic using fetch() instead of Axios:
+
+import React, { useEffect, useState } from 'react';
+
+const OPSIClients = () => {
+  const [clients, setClients] = useState([]);
+
+  useEffect(() => {
+    fetch('http://your-api-endpoint/api/clients')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error("Network response was not ok");
+        }
+        return response.json();
+      })
+      .then(data => {
+        setClients(data); // Assuming data is an array
+      })
+      .catch(error => {
+        console.error("Error fetching client data:", error);
+      });
+  }, []);
+
+  return (
+    <div>
+      <h2>OPSI Clients</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Client SK</th>
+            <th>Sub Client SK</th>
+            <th>LOB</th>
+            <th>Program</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {clients.map((client, index) => (
+            <tr key={index}>
+              <td>{client.clientSk}</td>
+              <td>{client.subClientSk}</td>
+              <td>{client.lob}</td>
+              <td>{client.program}</td>
+              <td>{client.status}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+export default OPSIClients;
+
+Summary:
+
+Use fetch() if you want to avoid extra dependencies — it’s perfectly fine for most use cases.
+
+Want help wiring this up to a sidebar menu click event?
+
